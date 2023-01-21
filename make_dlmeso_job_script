@@ -1,0 +1,258 @@
+#!/bin/bash
+# MAKE_DLMESO_JOB_SCRIPT    NDD 28/05/09
+# Added support for CSD3    DMT 15/01/20
+# Changes to MAKE_DLMESO_JOB_SCRIPT DMT 02/02/21
+# This script generates a job-submission script for DLMESO on the
+# Lancaster HEC and Cambridge CSD3.
+
+usage="Usage: make_job_sub_script [-time <hh:mm[:ss]>] [-nnodes <nnodes>] [-ncorespernode <ncorespernode>] [-nodetype <nodetype>] [-name <job_name>] [-seed <seed>] [-version <version>] [-serial] [-mpi] [-memory <memory>] [-central] [-help]"
+
+# Colours.
+default="\033[0m" ; black="\033[30m" ; red="\033[31m"
+green="\033[32m"  ; brown="\033[33m" ; blue="\033[34m"
+purple="\033[35m" ; cyan="\033[36m"  ; grey="\033[37m"
+
+
+function errstop {
+# Halt with an error message.
+ [[ $1 ]] && echo -e "\n${red}$1$default" | fold -s >/dev/stderr
+ echo -e "\n$usage\n" | fold -s >/dev/stderr
+ exit 1
+}
+
+
+function check_command_line {
+# Halt with an error if command-line argument is absent.
+ [[ ! $1 ]] && errstop "Error parsing command-line arguments."
+}
+
+
+echo
+echo "MAKE_DLMESO_JOB_SCRIPT"
+echo "======================"
+echo
+
+# Decide which machine this is.
+case $(hostname) in
+wayland*)
+ machine=hec ;;
+login-e-*)
+ machine=csd3 ;;
+# This is equivalent to the HEC but not specific to CSD3 so could be
+# done probably better.
+*)
+ errstop "Error: this script should only be run on the HEC or CSD3." ;;
+esac # hostname
+
+# Defaults
+jscript=runme     # Name of script
+nnodes=1          # Number of n-core nodes.
+#version=""        # Look for CASTEP_version.
+mpi_serial=mpi    # MPI or serial version of CASTEP.
+central=F         # Use centrally installed version.
+jtime=""          # Job duration (hh:mm:ss).
+nodetype=""       # Type of node.
+ncorespernode=""  # Number of cores per node.
+memory=""         # Memory request for serial jobs.
+
+# Job name: last part of dir name, in lower case.
+jname=$(pwd -P | tr "A-Z " "a-z_")
+jname=${jname##*/}
+# Try to determine CASTEP seedname from files present in directory.
+if (($(find . -maxdepth 1 -name "*.param" -printf "." | wc -c)==1)); then
+ seed=$(find . -maxdepth 1 -name "*.param" -exec basename {} \;)
+ seed="${seed%.param}"
+elif (($(find . -maxdepth 1 -name "*.cell" -printf "." | wc -c)==1)); then
+ seed=$(find . -maxdepth 1 -name "*.cell" -exec basename {} \;)
+ seed="${seed%.cell}"
+else
+ seed=""
+fi
+jdir=$(pwd -P) # directory in which job is run.
+
+# Command-line arguments
+while [[ $1 ]]; do
+ case "$1" in
+ --time|-time|time)
+  shift
+  check_command_line "$1"
+  jtime="$1" ;;
+ --nodes|-nnodes|nnodes)
+  shift
+  check_command_line "$1"
+  nnodes="$1" ;;
+ --ncorespernode|-ncorespernode|ncorespernode|-tpn|tpn)
+  shift
+  check_command_line "$1"
+  ncorespernode="$1" ;;
+ --nodetype|-nodetype|nodetype)
+  shift
+  check_command_line "$1"
+  nodetype="$1" ;;
+ --name|-name|name)
+  shift
+  check_command_line "$1"
+  jname="$1" ;;
+ --seed|-seed|seed)
+  shift
+  check_command_line "$1"
+  seed="$1" ;;
+ --version|-version|version)
+  shift
+  check_command_line "$1"
+  version="_$1" ;;
+ --serial|-serial|serial)
+  mpi_serial=serial ;;
+ --mpi|-mpi|mpi)
+  mpi_serial=mpi ;;
+ --memory|-memory|memory)
+  shift
+  check_command_line "$1"
+  memory="$1" ;;
+ --central|-central|central)
+  central=T ;;
+ --help|-help|help)
+  echo -e "This script prepares a DLMESO job-submission script.\n\n$usage"
+  exit 0 ;;
+ *)
+  errstop ;;
+ esac # $1
+ shift
+done # command line arguments
+
+# Check arguments / supply remaining defaults.
+if [[ $mpi_serial == mpi ]]; then
+# Default numbers of cores per node.
+ case "$machine" in
+ hec)
+  case "$nodetype" in
+  10Geth64G|10Geth128G|10Geth\*)
+   [[ $ncorespernode ]] || ncorespernode=16 ;;
+  40core192G)
+   [[ $ncorespernode ]] || ncorespernode=40 ;;
+  "")
+   nodetype="10Geth*"
+   [[ $ncorespernode ]] || ncorespernode=16 ;;
+  *)
+   errstop \
+    "Error: nodetype should be 10Geth64G, 10Geth128G, 10Geth* or 40core192G." ;;
+  esac # nodetype
+  ;;
+ csd3)
+  case "$nodetype" in
+  skylake|skylake-himem)
+   [[ $ncorespernode ]] || ncorespernode=32 ;;
+  "")
+   nodetype="skylake"
+   [[ $ncorespernode ]] || ncorespernode=32 ;;
+  *)
+   errstop \
+    "Error: nodetype should be skylake or skylake-himem currently supported." ;;
+  esac #nodetype
+  ;;
+ *)
+  errstop "Bug 1." ;;
+ esac # machine
+ ncores=$((nnodes*ncorespernode)) # Total number of cores
+fi # MPI
+
+# DLMESO binary.
+if [[ $central == F ]]; then
+ dlmesobin="$HOME/DL_MESO"
+else
+ case "$machine" in
+# hec)
+## Centrally installed version on HEC:
+#  castepbin=$(type -p castep.$mpi_serial) || \
+#   castepbin="/usr/shared_apps/packages/CASTEP-6.11/bin/castep.$mpi_serial" ;;
+ *)
+  errstop "No centrally installed version is available on this machine." ;;
+ esac
+fi # central
+
+echo -e "${blue}Script name          : $green$jscript$default"
+echo -e "${blue}DLMESO binary        : $green$castepbin$default"
+[[ $jtime ]] && echo -e "${blue}Job duration         : $green$jtime$default"
+echo -e "${blue}Parallel/serial      : $green$mpi_serial$default"
+if [[ $mpi_serial == mpi ]]; then
+ echo -e "${blue}Number of nodes      : $green$nnodes$default"
+ echo -e "${blue}No. of cores per node: $green$ncorespernode$default"
+ echo -e "${blue}Total number of cores: $green$ncores$default"
+else
+ [[ $memory ]] && echo -e "${blue}Memory request       : $green$memory$default"
+fi # MPI / serial
+[[ $nodetype ]] && echo -e \
+ "${blue}Node type            : $green$nodetype$default"
+echo -e "${blue}Job name             : $green$jname$default"
+echo -e "${blue}DLMESO seedname      : $green$seed$default"
+echo
+
+# Check that binary is present.
+[[ ! -x $dlmesobin ]] && errstop "Error: DLMESO binary cannot be found."
+
+# Check that CASTEP input files are present.
+#[[ ! -f $seed.param ]] && errstop "Error: $seed.param file is missing."
+#[[ ! -f $seed.cell ]] && errstop "$Error: $seed.cell file is missing."
+#[[ -f $seed.castep ]] && echo -e \
+# "${purple}Warning: a $seed.castep file already exists.$default\n" | fold -s
+
+# Prepare job-submission script.
+echo "#!/bin/bash" > "$jscript"
+case "$machine" in
+hec)
+ echo "#\$ -S /bin/bash" >> "$jscript"
+ echo "#\$ -N $jname" >> "$jscript"
+ if [[ $mpi_serial == mpi ]]; then
+  echo "#\$ -q parallel" >> "$jscript"
+  echo "#\$ -l nodes=$nnodes" >> "$jscript"
+  [[ $nodetype ]] && echo "#\$ -l node_type=$nodetype" >> "$jscript"
+ else
+  echo "#\$ -q serial" >> "$jscript"
+  [[ $memory ]] && echo "#\$ -l h_vmem=$memory" >> "$jscript"
+ fi # MPI / serial
+ echo "#\$ -e \"$jdir/deleteme.o\"" >> "$jscript"
+ echo "#\$ -o \"$jdir/deleteme.o\"" >> "$jscript"
+ echo "source /etc/profile" >> "$jscript"
+ echo "export PATH=\"$PATH\"" >> "$jscript"
+ echo "export LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH\"" >> "$jscript"
+ echo "export OMP_NUM_THREADS=1" >> "$jscript"
+ if [[ $mpi_serial == mpi ]]; then
+  echo "mpirun -np $ncores \"$dlmesobin\" $seed 2>&1" >> "$jscript"
+ else
+  echo "\"$dlmesobin\" $seed 2>&1" >> "$jscript"
+ fi # MPI
+ ;;
+csd3)
+ echo "#SBATCH -J $jname" >> "$jscript"
+ echo "#SBATCH --nodes=$nnodes" >> "$jscript"
+ [[ $nodetype ]] && echo "#SBATCH -p $nodetype" >> "$jscript"
+ echo "#SBATCH --ntasks=$ncores" >> "$jscript"
+ echo "#SBATCH -A T2-CS093-CPU" >> "$jscript" #CHANGETHIS
+ echo "#SBATCH --time=$jtime" >> "$jscript"
+ echo "source /etc/profile" >> "$jscript"
+ echo "export PATH=\"$PATH\"" >> "$jscript"
+ echo "export LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH\"" >> "$jscript"
+ echo "export OMP_NUM_THREADS=1" >> "$jscript"
+ if [[ $mpi_serial == mpi ]]; then
+  echo "mpirun -np $ncores \"$dlmesobin\" $seed 2>&1" >> "$jscript"
+ else
+  echo "\"$dlmesobin\" $seed 2>&1" >> "$jscript"
+ fi # MPI
+ ;;
+*)
+ errstop "Bug 3." ;;
+esac # machine
+chmod u+x "$jscript"
+
+echo -e "${blue}Have generated a job-submission script.$default"
+case "$machine" in
+hec)
+ echo -e \
+  "${blue}Please submit it with \"${green}qsub $jscript${blue}\".$default" ;;
+csd3)
+ echo -e \
+  "${blue}Please submit it with \"${green}sbatch $jscript${blue}\".$default" ;;
+*)
+ errstop "Bug 4." ;;
+esac # machine
+echo

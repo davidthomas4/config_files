@@ -1,0 +1,24 @@
+#!/bin/bash
+# This script gets rid of the various "junk" files produced by LaTeX
+# or f90, etc.  It doesn't get rid of object .o files.
+
+for x in * ; do
+ [[ ! -f $x ]] && continue
+ xnogz="${x%.gz}"
+ case "$xnogz" in
+ *~|core|*.mod|gmon.out|*__genmod.f90|*.aux|*.log|*.dvi|*.toc|*.tex.flc|*.snm|*.nav|*.fls|*.fdb_latexmk|*.blg|*.ilg|*.ind|*.gcov|*.gcda|*.gcno)
+  rm -f "$x" ;;
+ *.out|*.idx)
+  xtex="${xnogz%.*}.tex"
+  [[ -f $xtex || -f $xtex.gz ]] && rm -f "$x"
+  ;;
+ *Notes.bib)
+  xtex="${xnogz%Notes.bib}.tex"
+  [[ -f $xtex || -f $xtex.gz ]] && rm -f "$x"
+  ;;
+ *.class)
+  xjava="${xnogz%.class}.java"
+  [[ -f $xjava || -f xjava.gz ]] && rm -f "$x"
+  ;;
+ esac # xnogz
+done # x

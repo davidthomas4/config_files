@@ -1,0 +1,14 @@
+#!/bin/bash
+
+python_script="set python script file name here."
+variable_name="Name of variable to change."
+Job_folder="Job"
+
+for (( i=1; i<=100; i+=1)); do
+  mkdir "$Job_folder$i"
+  cp "$python_script" "$Job_folder$i"
+  cd "$Job_folder$i"
+  sed -i "s/${variable_name}=.*/${variable_name}=${i}/g" $python_script 
+  qsub $pythonscript # or however you usually submit it  
+  cd ../
+done

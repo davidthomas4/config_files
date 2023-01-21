@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# CLEARUP_CASTEP, NDD, October 2004.
+
+# This script gets rid of castep output files (but not input files)
+# from the present working directory, or from a set of directories.
+
+# Use with caution, as it will delete any file called x.castep, etc.
+
+# Colours.
+default="\033[0m" ; black="\033[30m" ; red="\033[31m"
+green="\033[32m"  ; brown="\033[33m" ; blue="\033[34m"
+purple="\033[35m" ; cyan="\033[36m"  ; grey="\033[37m"
+
+usage="Usage: clearup_castep [-help] [directory1] [directory2] ..."
+
+function errstop {
+# Report an error and halt.
+ [[ $1 ]] && echo -e "$red$1$default" | fold -s >/dev/stderr
+ echo "$usage" | fold -s >/dev/stderr
+}
+
+if [[ ! $1 ]]; then
+ wipe_dir=.
+elif [[ $1 == -help || $1 == --help ]]; then
+ echo "$usage"
+ echo -e \
+  "${blue}This script gets rid of CASTEP and pCASTEP output files.$default"
+ exit 0
+fi
+first_wipe=T
+base_dir=$(pwd)
+
+while [[ $1 ]] || [[ $first_wipe == T ]]; do
+
+ if [[ $1 ]]; then
+  wipe_dir="$1"
+  shift
+ fi # arguments present
+ cd "$base_dir"
+ [[ ! -d $wipe_dir ]] && errstop \
+  "$Directory $wipe_dir does not appear to exist."
+ cd "$wipe_dir"
+ echo -e \
+  "${blue}Clearing up after CASTEP in directory $green$wipe_dir${blue}.$default" \
+  | fold -s
+
+ for x in * .* ; do
+  [[ ! -f $x ]] && continue
+  case "${x%.gz}" in
+   *.[0-9][0-9][0-9][0-9].err|*.bands|*.castep|*.check|*.cst_esp|*.wvfn.[0-9] \
+   |*.wvfn.[0-9][0-9]|*.geom|*.casino|*.beta|*.econv|*.pwave|*.gamma \
+   |augmentation.data|*.castep_bin|*.check_bak|*.phonon|*.orbitals|*.dos \
+   |*.phonon-out|*.bfgs_extrap|*.fd_wvfn|*.bib|*.dfpt_wvfn \
+   |*.dfpt_wvfn_u0_ref|*.phonon_dos|*.dfpt_den_0|*.dfpt_wvfn_u0 \
+   |MULTIPLE_ATTEMPTS_NEEDED|tempfile_runme|deleteme.[oe] \
+   |.err|fort.[0-9]|fort.[0-9][0-9]|gmon.out|*.efield|*.dfpt_wvfn_u1_k[0-9]\
+   |*.fd_den)
+   rm -f "$x"
+  esac # x to be deleted
+ done # x
+
+ first_wipe=F
+
+done # Wipe directory.
+
+echo -e "${blue}Finished.$default"
+
