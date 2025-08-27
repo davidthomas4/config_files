@@ -1,14 +1,78 @@
 #!/bin/bash
+# 08/25 DMT
 
-python_script="set python script file name here."
-variable_name="Name of variable to change."
-Job_folder="Job"
+##########################################
+#                                        #
+# Script to setup a setries of HPC jobs. #
+#                                        #
+##########################################
 
-for (( i=1; i<=100; i+=1)); do
-  mkdir "$Job_folder$i"
-  cp "$python_script" "$Job_folder$i"
-  cd "$Job_folder$i"
-  sed -i "s/${variable_name}=.*/${variable_name}=${i}/g" $python_script 
-  qsub $pythonscript # or however you usually submit it  
-  cd ../
+
+###############
+# Parameters. #
+###############
+
+# File names
+# Try to determine Abaqus seedname from files present in directory.
+if (($(find . -maxdepth 1 -name "*.inp" -printf "." | wc -c)==1)); then
+ seed=$(find . -maxdepth 1 -name "*.inp" -exec basename {} \;)
+ seed="{seed%.inp}"
+else
+ echo "No input file found."
+fi
+input=${seed}.inp
+output="output_script.py"
+first_job=T
+jobid="000000"
+
+##############
+# Functions. #
+##############
+
+
+function make_jobs {
+#######################################################
+# This function makes the job directories and amends  #
+# the input files.                                    #
+#######################################################
+ mkdir -p "${dirname}"
+ cp "${input}" "${dirname}/${dirname}/inp" 
+# bond_strength=${dirname##*_}
+# sed -i "/*Damage Initiation,/r strength_of_bond/${bond_strength}.dat" ${dirname}/${input}
+ sed -i "s/Dflux.*/Dflux, amplitude=t${dirname}/" ${dirname}/${dirname}.inp
+}
+
+
+function run_jobs {
+#########################################################
+# This function creates the job submission script using #
+# make_abaqus_job_script and submits the job.           #
+#########################################################
+ cd "${dirname}"
+ make_abaqus_job_script -nnodes 6 -ncorespernode 36 -name "${seed}_${dirname}" > /dev/null 2>&1
+ if [[ ${first_job} == T ]]; then
+  jobid=$(sbatch --parsable runme) > /dev/null 2>&1
+  first_job=F
+ elif [[ ${first_job} == F ]]; then
+  jobid=$(sbatch -d afterok:${jobid} --parsable runme)
+else
+ errstop "ERROR: first_job flag incorrect!"
+fi
+# make_abaqus_job_script -date -memory 12800 -name "${seed}_${dirname}" > /dev/null 2>&1
+# sbatch -d afterok:${jobid} runme
+ cd ../
+}
+
+############################
+# Main script begins here. #
+############################
+
+module load "abaqus/2023" > /dev/null 2>&1
+# Loop over the different directory names.
+dirnames=("1ns" "10ns" "100ns" "Orig" "2 times" "5times" "6times" "7times" "8times" "10times"
+"50times" "100times" "1000times")
+for i in "${dirnames[@]}"; do
+ dirname="${i}"
+ make_jobs ${i}
+ run_jobs
 done
