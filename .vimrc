@@ -60,6 +60,8 @@ set foldmethod=marker
 set foldmarker=*{{,}}*
 set whichwrap+=<,>,[,]
 set textwidth=69
+" Use gqq to resize a line
+" Use gqip for paragraph
 
 augroup texSpell
  autocmd!
@@ -73,3 +75,12 @@ autocmd FileType matlab setlocal keywordprg=info\ octave\ --vi-keys\ --index-sea
 au BufWritePre * if (&ft!='mail') | :%s/\s\+$//e | endif
 
 set list listchars=nbsp:·,trail:·,tab:»\ ,extends:❯,precedes:❮
+
+inoremap " ""<left>
+""inoremap ' ''<left>
+inoremap ` `'<left>
+inoremap ( ()<left>
+inoremap { {}<left>
+inoremap [ []<left>
+inoremap \begin{frame \begin{frame}^M\frametitle{}^M^M\end{frame}<up><up><right>
+inoremap *{{ *{{^M^M%<space>}}*<up><up><space>
